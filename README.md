@@ -2,7 +2,7 @@
 learning mnist with euslisp
 
 ## Download mnist dataset
-- https://github.com/itohdak/mnist_euslisp.git
+- http://yann.lecun.com/exdb/mnist/
 
 ## Decompress mnist dataset
 ```
