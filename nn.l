@@ -2,7 +2,7 @@
 (require "activations.l")
 (require "mnist.so")
 
-(setq *lr* 0.003) ;; learning rate
+(setq *lr* 0.0005) ;; learning rate
 (setq *mr* 0.5) ;; momentum rate
 
 (defclass Perceptron
@@ -240,17 +240,22 @@
 		      (list (instance Perceptron :init 784 1000 1.0 ReLU)
 			    (instance Perceptron :init 1000 1000 1.0 ReLU)
 			    (instance Perceptron :init 1000 10 1.0 Softmax))))
-  (dotimes (i (length *train-images*))
-    (let* ((loss 0.0))
-      (setq x (elt *train-images* i))
-      (setq train (make-array 10 :element-type :float :initial-element 0))
-      (setq ind (ceiling (elt (elt *train-labels* i) 0)))
-      (setf (elt train ind) 1.0)
-      (setq loss (+ loss (send mlp :train-one x train *lr* *mr*)))
-      (when (= (mod i 100) 99)
-	(print (/ loss 100.0))
-	(setq loss 0.0))
-      ))
+
+  (format t "learning rate: ~A~%" *lr*)
+  (dotimes (epoc 20)
+    (format t "=============================================~%epoc: ~A~%~%" (1+ epoc))
+    (dotimes (i (length *train-images*))
+      (let* ((loss 0.0))
+	(setq x (elt *train-images* i))
+	(setq train (make-array 10 :element-type :float :initial-element 0))
+	(setq ind (ceiling (elt (elt *train-labels* i) 0)))
+	(setf (elt train ind) 1.0)
+	(setq loss (+ loss (send mlp :train-one x train *lr* *mr*)))
+	(when (= (mod i 100) 99)
+	  (format t "~A: ~A~%" (1+ i) (/ loss 100.0))
+	  (setq loss 0.0))
+	))
+    )
   )
 (defun test-mnist ()
   (setq mlp (instance MultiLayerPerceptron :init
