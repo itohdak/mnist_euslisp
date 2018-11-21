@@ -23,13 +23,22 @@ $ rm *-ubyte
 $ rm *.gz
 ```
 
-## Compile euslisp file
+## Accelarate simulation, otherwise simulation won't finish!
+1. Dump mnist datasets as euslisp file
 ```
 $ roseus
-irteusgl$ compile-file "mnist.l"
-irteusgl$ exit
-
-$ roseus
-irteusgl$ load "mnist.so"
+irteusgl$ (compile-file "mnist.l")
+irteusgl$ (progn (load "mnist.so") (test) (dump-loadable-structure "mnist-datasets.l" *train-images* *train-labels* *test-images* *test-labels*))
 ```
 
+2. Compile euslisp file
+```
+irteusgl$ (compile-file "nn.l")
+```
+
+## Run simulation
+```
+$ roseus
+irteusgl$ (load "nn.so")
+irteusgl$ (test-mnist-batch)
+```

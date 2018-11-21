@@ -33,7 +33,9 @@
      (let* ((y (copy-object x)))
        (dotimes (i (array-dimension y 0))
 	 (dotimes (j (array-dimension y 1))
-	   (setf (aref y i j) (if (< (aref x i j) 0) 0 1))))
+	   (if (<= (aref x i j) 0)
+	       (setf (aref y i j) 0)
+	     (setf (aref y i j) 1))))
        y))
     ))
   )
@@ -97,7 +99,7 @@
     (t
      (let* ((n (array-dimension x 0)) ;; # of data
 	    (d (array-dimension x 1)) ;; # of dim
-	    (sum (make-array d :element-type :float :initial-element 0.0))
+	    (sum (make-array n :element-type :float :initial-element 0.0))
 	    (y (copy-object x)))
        (dotimes (i n)
 	 (let* ((x- (subseq (x . entity) (* i d) (* (1+ i) d))))

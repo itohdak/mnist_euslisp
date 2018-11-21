@@ -190,7 +190,7 @@ model = MLP([Perceptron(784, n_neuron, 0.5, ReLU),
 
 
 n_epoch = 20 # 試行回数
-batchsize = 1
+batchsize = 100
 # loss_list = []
 
 print 'neuron number = %d' %n_neuron

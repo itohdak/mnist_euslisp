@@ -4,3 +4,4 @@
 *.o
 *.c
 *.h
+mnist-datasets.l

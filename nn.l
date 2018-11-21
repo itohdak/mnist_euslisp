@@ -1,6 +1,7 @@
 (require "cblaslib.l")
 (require "activations.l")
-(require "mnist.so")
+;; (require "mnist.so")
+(require "mnist-datasets.l")
 
 (setq *lr* 0.0005) ;; learning rate
 (setq *mr* 0.5) ;; momentum rate
@@ -14,6 +15,17 @@
     (dotimes (i n)
       (push v-lst element))
     (make-array `(,n ,(length v)) :element-type :float
+		:initial-contents element)))
+
+(defun one-matrix (dimensions)
+  """
+  要素がすべて1で，形がdimensionsの行列を作る
+  """
+  (let* (element
+	 (v-lst (make-list (cadr dimensions) :initial-element 1.0)))
+    (dotimes (i (car dimensions))
+      (push v-lst element))
+    (make-array dimensions :element-type :float
 		:initial-contents element)))
 
 (defclass Perceptron
@@ -69,7 +81,7 @@
    (layers-)
    (setq layers layers-)
    (dolist (layer layers)
-     (format t "(in: ~A  out: ~A)~%"
+     (format t "(in:  ~4D    out:  ~4D)~%"
 	     (layer . in-dim)
 	     (layer . out-dim)))
    (format t "~%")
@@ -221,58 +233,40 @@
 
    (dotimes (i (array-dimension x 0))
      (push (- (log (aref y i (position-if #'(lambda (x) (= x 1.0)) (matrix-row train-data i))))) loss))
-   (setq loss (/ (reduce #'+ log) (array-dimension x 0)))
+   (setq loss (/ (reduce #'+ loss) (array-dimension x 0)))
 
-   ;; ;; back propagation
-   ;; (setq delta (v- y train-data))
-   ;; (setq ((elt layers (1- (length layers))) . delta) delta)
-   ;; (setq W ((elt layers (1- (length layers))) . W))
+   ;; back propagation
+   (setq delta (copy-object y))
+   (cblas-daxpy (train-data . entity) (delta . entity) :alpha -1.0)
+   (setq ((elt layers (1- (length layers))) . delta) delta)
+   (setq W ((elt layers (1- (length layers))) . W))
 
-   ;; (dolist (layer (cdr (reverse layers)))
-   ;;   (let* ((delta-prop (transform (transpose W)
-   ;; 				   (copy-object delta)))
-   ;; 	    (diff (send (layer . activation) :diff (layer . u))))
-   ;;     (setq delta (make-array (length delta-prop) :element-type :float :initial-element 0.0))
-   ;;     (dotimes (i (length delta))
-   ;; 	 (setf (elt delta i) (+ (elt delta-prop i) (elt diff i))))
-   ;;     )
-   ;;   ;; (setq delta (transform (layer . mask) (copy-object delta)))
-   ;;   ;; (format t "delta: ~A~%" (subseq (layer . delta) 0 5))
-   ;;   (setq (layer . delta) delta)
-   ;;   (setq W (layer . W))
-   ;;   )
+   (dolist (layer (cdr (reverse layers)))
+     (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . in-dim))
+				   :element-type :float)))
+       (cblas-dgemm delta W new-delta) ;; 行列積
+       (setq (new-delta . entity) (coerce (mapcar #'* (coerce (new-delta . entity) cons) (coerce ((send (layer . activation) :diff (layer . u)) . entity) cons)) float-vector)) ;; 要素積
+       (setq delta new-delta)
+       ;; TODO: dropout
+       (setq (layer . delta) delta)
+       (setq W (layer . W))
+       ))
 
-   ;; ;; update weight
-   ;; (setq z x)
-   ;; (dolist (layer layers)
-   ;;   (setq dW (make-matrix (layer . out-dim) (layer . in-dim)))
-   ;;   (dotimes (i (length (layer . delta)))
-   ;;     (dotimes (j (length z))
-   ;; 	 (setf (aref dW i j) (* (elt (layer . delta) i) (elt z j)))))
+   ;; update weight
+   (let* ((z x))
+     (dolist (layer layers)
+       (let* ((dW (make-array (array-dimensions (layer . W)) :element-type :float))
+	      (db (make-array `(1 ,(length (layer . b))) :element-type :float)))
+	 (cblas-dgemm (transpose (layer . delta)) z dW)
+	 (cblas-dgemm (one-matrix `(1 ,(array-dimension z 0))) (layer . delta) db)
+	 (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate))
+	 (setq (layer . b) (v- (layer . b) (scale learning-rate (db . entity))))
+	 ;; TODO: momentum
+	 (setq z (layer . z))
+	 )))
 
-   ;;   (setq db (make-array (layer . out-dim) :element-type :float))
-   ;;   (dotimes (i (length (layer . delta)))
-   ;;     (setf (elt db i) (* (elt (layer . delta) i) 1.0)))
-
-   ;;   ;; (format t "dW: ~A~%" (subseq (dW . entity) 0 5))
-   ;;   ;; (dotimes (a (layer . out-dim))
-   ;;   ;;   (dotimes (b (layer . in-dim))
-   ;;   ;; 	 (setf (aref (layer . W) a b)
-   ;;   ;; 	       (- (aref (layer . W) a b) (* (- learning-rate) (aref dW a b))))
-   ;;   ;; 	 ))
-   ;;   (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate))
-   ;;   (setq (layer . b) (v- (layer . b) (scale learning-rate db)))
-
-   ;;   ;; (unless (or (null (layer . pre-dW)) (null (layer . pre-db)))
-   ;;   ;;   (setq (layer . W) (v+ (layer . W) (scale momentum-rate pre-dW)))
-   ;;   ;;   (setq (layer . b) (v+ (layer . b) (scale momentum-rate pre-db))))
-   ;;   ;; (setq (layer . pre-dW) (v- (layer . pre-dW) (scale learning-rate dW)))
-   ;;   ;; (setq (layer . pre-db) (v- (layer . pre-db) (scale learning-rate db)))
-   ;;   (setq z (copy-object (layer . z)))
-   ;;   )
-
-   ;; ;; (format t "W: ~A~%" (subseq (((elt layers 0) . W) . entity) 0 5))
-   ;; ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
+   ;; (format t "W: ~A~%" (subseq (((elt layers 0) . W) . entity) 0 5))
+   ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
 
    loss)
   (:print-weight
@@ -307,15 +301,17 @@
     (print (send mlp :train x train *lr* *mr*)))
   ;; (send mlp :print-weight)
   t)
-(defun test-mlp-mat ()
+(defun test-mlp-batch ()
   (setq mlp (instance MultiLayerPerceptron :init
 		      (list (instance Perceptron :init 10 20 1.0 ReLU)
 			    (instance Perceptron :init 20 20 1.0 ReLU)
 			    (instance Perceptron :init 20 10 1.0 Softmax))))
   (setq x (make-array '(10 10) :element-type :float))
-  (setq train #f(0 0 0 0 0 1 0 0 0 0))
+  (setq train (make-array '(10 10) :element-type :float))
+  (dotimes (i 10)
+    (setf (aref train i 0) 1.0))
   (dotimes (i 100)
-    (print (send mlp :train x train *lr* *mr*)))
+    (print (send mlp :train-batch x train *lr* *mr*)))
   ;; (send mlp :print-weight)
   t)
 
@@ -371,23 +367,32 @@
     (setq loss (send mlp :train x train *lr* *mr*))
     (print loss)
     ))
-(defun test-mnist ()
+(defun test-mnist-batch ()
   (setq mlp (instance MultiLayerPerceptron :init
 		      (list (instance Perceptron :init 784 1000 1.0 ReLU)
 			    (instance Perceptron :init 1000 1000 1.0 ReLU)
 			    (instance Perceptron :init 1000 10 1.0 Softmax))))
-  (setq batchsize 100)
-  (dotimes (i 100)
-    (setq x (subseq *train-images* (* i batchsize) (* (1+ i) batchsize)))
-    (setq train (make-list batchsize :initial-element (make-array 10 :element-type :float :initial-element 0)))
-    (dotimes (j (length train))
-      (let* ((label (elt (subseq *train-labels* (* i batchsize) (* (1+ i) batchsize)) j))
-	     (ind (ceiling (elt label 0))))
-	(setf (elt (elt train j) ind) 1.0))
-      )
-    (setq loss (send mlp :train x train *lr* *mr*))
-    (print loss)
-    ))
+  (setq batchsize 50) ;; 100だとSegmentation Fault
+  (format t "learning rate:  ~A~%" *lr*)
+  (dotimes (epoch 1)
+    (format t "epoch:  ~2D  ===========================~%" epoch)
+    (dotimes (i (/ (length *train-images*) batchsize))
+      (let* ((x (make-array `(,batchsize 784) :element-type :float))
+	     (train (make-array `(,batchsize 10) :element-type :float))
+	     (train-labels (subseq *train-labels* (* i batchsize) (* (1+ i) batchsize))))
+	(setq (x . entity)
+	      (coerce (reduce #'(lambda (a b) (concatenate cons a b))
+			      (subseq *train-images* (* i batchsize) (* (1+ i) batchsize))) float-vector))
+
+	(dotimes (j batchsize)
+	  (let* ((label (elt train-labels j))
+		 (ind (ceiling (elt label 0))))
+	    (setf (aref train j ind) 1.0))
+	  )
+	(format t "#image  ~5D:      loss:  ~2,4F~%" (* i batchsize) (send mlp :train-batch x train *lr* *mr*))
+	))
+    )
+  )
 
 (defun draw (image-float-vector)
   (unless (boundp '*irtviewer*)
