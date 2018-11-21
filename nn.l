@@ -389,7 +389,7 @@
 		 (ind (ceiling (elt label 0))))
 	    (setf (aref train j ind) 1.0))
 	  )
-	(format t "#image  ~5D:      loss:  ~2,4F~%" (* i batchsize) (send mlp :train-batch x train *lr* *mr*))
+	(format t "#image  ~5D:      loss:  ~2,4F~%" (* (1+ i) batchsize) (send mlp :train-batch x train *lr* *mr*))
 	))
     )
   )
