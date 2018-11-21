@@ -374,8 +374,8 @@
 			    (instance Perceptron :init 1000 10 1.0 Softmax))))
   (setq batchsize 50) ;; 100だとSegmentation Fault
   (format t "learning rate:  ~A~%" *lr*)
-  (dotimes (epoch 1)
-    (format t "epoch:  ~2D  ===========================~%" epoch)
+  (dotimes (epoch 20)
+    (format t "epoch:  ~2D  ===========================~%" (1+ epoch))
     (dotimes (i (/ (length *train-images*) batchsize))
       (let* ((x (make-array `(,batchsize 784) :element-type :float))
 	     (train (make-array `(,batchsize 10) :element-type :float))
