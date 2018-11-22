@@ -3,7 +3,7 @@
 ;; (require "mnist.so")
 (require "mnist-datasets.l")
 
-(setq *lr* 0.0005) ;; learning rate
+(setq *lr* 0.003) ;; learning rate
 (setq *mr* 0.5) ;; momentum rate
 
 (defun extended-matrix (v n)
