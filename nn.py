@@ -16,7 +16,7 @@ mr = 0.5 # 慣性項係数
 
 # データの読み込み
 # dir = '../dataset/txt/' # datasetのあるディレクトリ
-dir = '/home/itohdak/dataset/mnist/python-mnist/data/' # datasetのあるディレクトリ
+dir = '/home/itohdak/mnist_euslisp/' # datasetのあるディレクトリ
 
 start = time.time()
 

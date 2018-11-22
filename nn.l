@@ -283,6 +283,23 @@
      ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
 
      loss))
+  (:test-batch
+   (x train-data learning-rate momentum-rate)
+   (let* ((y x) (z x)
+	  loss delta W
+	  (last-layer (car (last layers))))
+     (dolist (layer layers)
+       (setq y (send layer :call y)))
+
+     (let* ((loss-tmp 0.0))
+       (dotimes (i (array-dimension x 0))
+	 (setq loss-tmp
+	       (+ loss-tmp
+		  (- (log (aref y i (position-if #'(lambda (x) (= x 1.0)) (matrix-row train-data i))))))))
+       (setq loss (/ loss-tmp (array-dimension x 0)))
+       )
+
+     loss))
   (:print-weight
    ()
    (dolist (layer layers)
@@ -419,7 +436,7 @@
 		    (+ (* ratio loss)
 		       (* (- 1.0 ratio) loss-tmp)))
 	      (setq n (+ n (array-dimension x 0)))
-	      (format t "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F~%" (* (1+ i) batchsize) loss n loss-tmp)
+	      ;; (format t "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F~%" (* (1+ i) batchsize) loss n loss-tmp)
 	      )
 	    ))
 	(format t "time:  ~S     loss ave.:  ~2,4F~%" (* (/ 1000.0 internal-time-units-per-second) (- (unix::runtime) tstart)) loss)

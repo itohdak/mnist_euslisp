@@ -22,7 +22,7 @@ register pointer argv[];
 { pointer rm;
   register int i,j,ii,row1,column1,row2,column2;
   register eusfloat_t *fm1,*fm2,*fm;
-  eusfloat_t *fv,x,fvv[256];
+  eusfloat_t *fv,x,fvv[10000];
   fv = fvv;
 
   ckarg2(2,3);
@@ -55,7 +55,7 @@ pointer MATRELU(ctx,n,argv)
   register int i,j,ii,row1,column1;
   register eusfloat_t *fm1,*fm;
   int flag;
-  eusfloat_t *fv,x,fvv[256];
+  eusfloat_t *fv,x,fvv[10000];
   fv = fvv;
 
   ckarg2(2,3);
@@ -100,7 +100,7 @@ register pointer argv[];
   register int i,j,ii,row1,column1;
   register eusfloat_t *fm1,*fm;
   int flag;
-  eusfloat_t *sum,sumv[256],*max,maxv[256],f;
+  eusfloat_t *sum,sumv[10000],*max,maxv[10000],f;
   sum = sumv; max = maxv;
 
   ckarg2(2,3);
@@ -115,7 +115,7 @@ register pointer argv[];
     if (row1!=rowsize(rm) || column1!=colsize(rm)) error(E_VECINDEX);
   }
   else rm=makematrix(ctx,row1,column1);
-  if (row1>256) {
+  if (row1>10000) {
     max = (eusfloat_t *)malloc(sizeof(eusfloat_t) * row1);
     sum = (eusfloat_t *)malloc(sizeof(eusfloat_t) * row1);
     //error(E_VECINDEX);
