@@ -1,6 +1,7 @@
 (require "cblaslib.l")
 (require "activations.so")
 ;; (require "mnist.so")
+(load-library "./MATPROD/Linux64/libmatprod" '("matprod"))
 
 (setq *lr* 0.001) ;; learning rate
 (setq *mr* 0.5) ;; momentum rate
@@ -252,10 +253,14 @@
      ;; (setq W ((elt layers (1- (length layers))) . W))
 
      (dolist (layer (cdr (reverse layers)))
-       (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . in-dim))
+       (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . out-dim))
 				     :element-type :float)))
 	 (cblas-dgemm delta W new-delta) ;; 行列積
-	 (setq (new-delta . entity) (coerce (mapcar #'* (coerce (new-delta . entity) cons) (coerce ((send (layer . activation) :diff (layer . u)) . entity) cons)) float-vector)) ;; 要素積
+	 ;; (format t "~A ~A~%" (array-dimensions new-delta)
+	 ;; 	 (array-dimensions (send (layer . activation) :diff (layer . u))))
+	 (setq (new-delta . entity) ;; (coerce (mapcar #'* (coerce (new-delta . entity) cons) (coerce ((send (layer . activation) :diff (layer . u)) . entity) cons)) float-vector)
+	       ((mprod new-delta (send (layer . activation) :diff (layer . u))) . entity)
+	       ) ;; 要素積
 	 (setq delta new-delta)
 	 ;; TODO: dropout
 	 (setq (layer . delta) delta)

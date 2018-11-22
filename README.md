@@ -42,3 +42,8 @@ $ roseus
 irteusgl$ (load "nn.so")
 irteusgl$ (test-mnist-batch)
 ```
+
+```
+$ sudo apt-get install libopenblas-base libopenblas-dev
+$ sudo update-alternatives --config libblas.so.3
+```
