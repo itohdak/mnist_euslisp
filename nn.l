@@ -66,8 +66,7 @@
      (setq z (send activation :call u)))
     (t
      (let* ((bmat (extended-matrix b (array-dimension x 0))))
-       (setq u (cblas-dgemm x Wt;; (transpose W)
-			    bmat))
+       (setq u (cblas-dgemm x Wt bmat))
        (setq z (send activation :call u))))
     )
    z)
@@ -256,9 +255,7 @@
        (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . out-dim))
 				     :element-type :float)))
 	 (cblas-dgemm delta W new-delta) ;; 行列積
-	 ;; (format t "~A ~A~%" (array-dimensions new-delta)
-	 ;; 	 (array-dimensions (send (layer . activation) :diff (layer . u))))
-	 (setq (new-delta . entity) ;; (coerce (mapcar #'* (coerce (new-delta . entity) cons) (coerce ((send (layer . activation) :diff (layer . u)) . entity) cons)) float-vector)
+	 (setq (new-delta . entity)
 	       ((mprod new-delta (send (layer . activation) :diff (layer . u))) . entity)
 	       ) ;; 要素積
 	 (setq delta new-delta)

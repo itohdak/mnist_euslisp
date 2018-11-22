@@ -4,7 +4,8 @@
 ;;; Do not make changes to this file unless you know what you are doing--modify
 ;;; the SWIG interface file instead.
 
-(setq *cblaslib* (load-foreign (format nil "/usr/lib/libcblas.so")))
+;; (setq *cblaslib* (load-foreign (format nil "/usr/lib/libcblas.so")))
+(setq *cblaslib* (load-foreign (format nil "/usr/lib/openblas-base/libblas.so")))
 
 (defun make-float-vector (n &optional (v 0.0))
   (make-sequence float-vector n :initial-element v))
