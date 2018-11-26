@@ -9,3 +9,4 @@
 mnist-datasets.l
 model/mnist-mlp-*.l
 *.a
+!.gitignore
