@@ -76,7 +76,7 @@
 
 (defclass MultiLayerPerceptron
   :super propertied-object
-  :slots (layers loss))
+  :slots (layers loss accuracy))
 
 (defmethod MultiLayerPerceptron
   (:layers nil layers)
@@ -105,14 +105,21 @@
      (dolist (layer layers)
        (setq y (send layer :call y)))
 
-     (let* ((loss-tmp 0.0))
+     (let* ((loss-tmp 0.0)
+	    (accuracy-tmp 0))
        (dotimes (i (array-dimension x 0))
-	 (setq loss-tmp
-	       (+ loss-tmp
-		  (- (log (aref y i
-				(position-if #'(lambda (x) (= x 1.0))
-					     (matrix-row train-data i))))))))
+	 (let* ((answer (position-if #'(lambda (x) (= x 1.0))
+				     (matrix-row train-data i)))
+		(pred (position-if #'(lambda (x) (= x (reduce #'max (matrix-row y i))))
+				     (matrix-row y i))))
+	   (setq loss-tmp
+		 (+ loss-tmp
+		    (- (log (aref y i answer)))))
+	   (if (= answer pred)
+	       (incf accuracy-tmp))
+	   ))
        (setq loss (/ loss-tmp (array-dimension x 0)))
+       (setq accuracy (/ (* 1.0 accuracy-tmp) (array-dimension x 0)))
        )
      ;; back propagation
      (setq delta (copy-object y))
@@ -155,7 +162,7 @@
      ;; (format t "W: ~A~%" (subseq (((elt layers 0) . W) . entity) 0 5))
      ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
 
-     loss))
+     (list loss accuracy)))
   (:print-weight
    ()
    (dolist (layer layers)
@@ -239,15 +246,17 @@
 		))
 	    ;; train
 	    (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
-		   (loss-tmp (send mlp :train-batch x train *lr* *mr*)))
+		   (result (send mlp :train-batch x train *lr* *mr*))
+		   (loss-tmp (car result))
+		   (accuracy (cadr result)))
 	      (setq loss
 		    (+ (* ratio loss)
 		       (* (- 1.0 ratio) loss-tmp)))
 	      (setq n (+ n (array-dimension x 0)))
 	      (format
 	       t
-	       "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F~%"
-	       (* (1+ i) batchsize) loss n loss-tmp)
+	       "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F      accuracy:  ~1,4F~%"
+	       (* (1+ i) batchsize) loss n loss-tmp accuracy)
 	      )
 	    ))
 	(format t "time:  ~S     loss ave.:  ~2,4F~%"
