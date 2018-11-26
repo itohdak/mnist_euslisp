@@ -23,6 +23,20 @@ $ rm *-ubyte
 $ rm *.gz
 ```
 
+## Build
+```
+# for C
+$ cd ./MATPROD
+$ make
+
+# for cuBLAS
+$ cd ./eus_cuda_matrix
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
+```
+
 ## Accelarate simulation, otherwise simulation won't finish!
 1. Dump mnist datasets as euslisp file
 ```
@@ -47,7 +61,10 @@ Select 3.
 ```
 $ roseus
 irteusgl$ (load "nn.so")
-irteusgl$ (test-mnist-batch 200) ;; train with minibatch size 200
-irteusgl$ (test-mnist-test)      ;; test with train images
-irteusgl$ (test-mnist-test)      ;; test with test images
+
+irteusgl$ (test-mnist-batch 200 :cblas)  ;; train with minibatch size 200, CBLAS/OpenBLAS
+irteusgl$ (test-mnist-batch 200 :cublas) ;; train with minibatch size 200, cuBLAS
+
+irteusgl$ (test-mnist-test) ;; test with train images
+irteusgl$ (test-mnist-test) ;; test with test images
 ```

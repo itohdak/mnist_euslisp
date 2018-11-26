@@ -1,5 +1,6 @@
 ;;
 (require "cblaslib.l")
+(require "eus-cuda-matrix.l")
 ;;(require "activations.so")
 ;; (require "mnist.so")
 (eval-when (load eval)
@@ -27,6 +28,7 @@
   """
   (make-array dimensions :element-type :float :initial-element 1.0)
   )
+
 
 (defclass Perceptron
   :super propertied-object
@@ -56,7 +58,7 @@
    (setq db nil)
    self)
   (:call
-   (x)
+   (x &optional (mode :cblas))
    "
    W,Wt: 2 dim (out-dim x in-dim)
    x: 1 dim (in-dim)
@@ -64,7 +66,13 @@
    u: 1 dim (out-dim)
    z: 1 dim (out-dim)
    "
-   (setq u (cblas-dgemm x Wt (extended-matrix b (array-dimension x 0))))
+   (cond
+    ((eq mode :cblas)
+     (setq u (cblas-dgemm x Wt (extended-matrix b (array-dimension x 0)))))
+    ((eq mode :cuda)
+     (setq u (cuda-dgemm x Wt (extended-matrix b (array-dimension x 0)))))
+    ((eq mode :cublas)
+     (setq u (cuda-cublas-m* x Wt (extended-matrix b (array-dimension x 0))))))
    ;;(setq z (send activation :call u))
    (setq z (funcall (symbol-function activation) 0 u)))
   (:dimensions () `(,out-dim ,in-dim))
@@ -97,13 +105,13 @@
        (setq y (send layer :call y)))
      y))
   (:train-batch
-   (x train-data learning-rate momentum-rate)
+   (x train-data learning-rate momentum-rate &optional (mode :cblas))
    (let* ((y x) (z x)
 	  loss delta W
 	  (last-layer (car (last layers))))
      ;; (setq y x)
      (dolist (layer layers)
-       (setq y (send layer :call y)))
+       (setq y (send layer :call y mode)))
 
      (let* ((loss-tmp 0.0)
 	    (accuracy-tmp 0))
@@ -123,7 +131,13 @@
        )
      ;; back propagation
      (setq delta (copy-object y))
-     (cblas-daxpy (train-data . entity) (delta . entity) :alpha -1.0)
+
+     (cond
+      ((eq mode :cblas)
+       (cblas-daxpy (train-data . entity) (delta . entity) :alpha -1.0))
+      ((eq mode :cublas)
+       (cuda-cublas-v+ (train-data . entity) (delta . entity) :alpha -1.0)))
+
      (send last-layer :delta delta)
      (setq W (send last-layer :W))
      ;; (setq ((elt layers (1- (length layers))) . delta) delta)
@@ -132,7 +146,14 @@
      (dolist (layer (cdr (reverse layers)))
        (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . out-dim))
 				     :element-type :float)))
-	 (cblas-dgemm delta W new-delta) ;; 行列積
+	 (cond ;; 行列積
+	  ((eq mode :cblas)
+	   (cblas-dgemm delta W new-delta))
+	  ((eq mode :cuda)
+	   (cuda-dgemm delta W new-delta))
+	  ((eq mode :cublas)
+	   (cuda-cublas-m* delta W new-delta)))
+
 	 (setq (new-delta . entity)
 	       ((mprod new-delta 
 		       (funcall (symbol-function (layer . activation))
@@ -149,10 +170,24 @@
      (dolist (layer layers)
        (let* ((dW (make-array (array-dimensions (layer . W)) :element-type :float))
 	      (db (make-array `(1 ,(length (layer . b))) :element-type :float)))
-	 (cblas-dgemm (transpose (layer . delta)) z dW)
-	 (cblas-dgemm (one-matrix `(1 ,(array-dimension z 0)))
-		      (layer . delta) db)
-	 (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate))
+
+	 (cond
+	  ((eq mode :cblas)
+	   (cblas-dgemm (transpose (layer . delta)) z dW)
+	   (cblas-dgemm (one-matrix `(1 ,(array-dimension z 0)))
+			(layer . delta) db)
+	   (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate)))
+	  ((eq mode :cuda)
+	   (cuda-dgemm (transpose (layer . delta)) z dW)
+	   (cuda-dgemm (one-matrix `(1 ,(array-dimension z 0)))
+			(layer . delta) db)
+	   (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate)))
+	  ((eq mode :cublas)
+	   (cuda-cublas-m* (transpose (layer . delta)) z dW)
+	   (cuda-cublas-m* (one-matrix `(1 ,(array-dimension z 0)))
+			(layer . delta) db)
+	   (cuda-cublas-v+ (dW . entity) ((layer . W) . entity) :alpha (- learning-rate))))
+
 	 (setq (layer . Wt) (transpose (layer . W)))
 	 (setq (layer . b) (v- (layer . b) (scale learning-rate (db . entity))))
 	 ;; TODO: momentum
@@ -173,7 +208,7 @@
 (defun test-mnist-train (&optional (i 0) &aux y (j 0))
   (unless (boundp '*mlp*)
     (format t ";;loading mnist-mlp-19.l~%")
-    (load "mnist-mlp-19.l")
+    (load "./model/mnist-mlp-19.l")
     (format t ";;loaded mnist-mlp-19.l~%")
     )
   (unless (boundp '*train-images*)
@@ -193,7 +228,7 @@
 (defun test-mnist-test (&optional (i 0) &aux y (j 0))
   (unless (boundp '*mlp*)
     (format t ";;loading mnist-mlp-19.l~%")
-    (load "mnist-mlp-19.l")
+    (load "./model/mnist-mlp-19.l")
     (format t ";;loaded mnist-mlp-19.l~%")
     )
   (unless (boundp '*test-images*)
@@ -210,7 +245,7 @@
      (if (>= i (length *test-images*)) (throw :exit-test nil))))
   )
 
-(defun test-mnist-batch (&optional (batchsize 50))
+(defun test-mnist-batch (&optional (batchsize 50) (mode :cblas))
   (if (>= batchsize 50) (sys:alloc 100000000))
   (unless (boundp '*train-images*)
     (format t "Loading datasets ... mnist-datasets.l~%")
@@ -227,44 +262,46 @@
     (dotimes (epoch 20)
       (format t "epoch:  ~2D  ===========================~%" (1+ epoch))
       (setq tstart (unix::runtime))
-      (let* ((loss 0.0)
-	     (n 0)
-	     (n-batch (/ (length *train-images*) batchsize))
-	     )
-	(dotimes (i n-batch)
-	  (let* ((x (make-array `(,batchsize 784) :element-type :float))
-		 (train (make-array `(,batchsize 10) :element-type :float))
-		 )
-	    ;; create batch
-	    (let* ((start (* i batchsize)))
-	      (dotimes (j batchsize)
-		(replace (x . entity) (elt *train-images* (+ start j))
-			 :start1 (* j 784))
-		(let* ((label (elt *train-labels* (+ start j)))
-		       (ind (ceiling (elt label 0))))
-		  (setf (aref train j ind) 1.0))
-		))
-	    ;; train
-	    (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
-		   (result (send mlp :train-batch x train *lr* *mr*))
-		   (loss-tmp (car result))
-		   (accuracy (cadr result)))
-	      (setq loss
-		    (+ (* ratio loss)
-		       (* (- 1.0 ratio) loss-tmp)))
-	      (setq n (+ n (array-dimension x 0)))
-	      (format
-	       t
-	       "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F      accuracy:  ~1,4F~%"
-	       (* (1+ i) batchsize) loss n loss-tmp accuracy)
+      (bench
+       (let* ((loss 0.0)
+	      (n 0)
+	      (n-batch (/ (length *train-images*) batchsize))
 	      )
-	    ))
-	(format t "time:  ~S     loss ave.:  ~2,4F~%"
-		(* (/ 1000.0 internal-time-units-per-second)
-		   (- (unix::runtime) tstart)) loss)
-	(setq *mlp* mlp)
-	(dump-mnist-instance (format nil "mnist-mlp-~A.l" epoch))
-	)
+	 (dotimes (i n-batch)
+	   (let* ((x (make-array `(,batchsize 784) :element-type :float))
+		  (train (make-array `(,batchsize 10) :element-type :float))
+		  )
+	     ;; create batch
+	     (let* ((start (* i batchsize)))
+	       (dotimes (j batchsize)
+		 (replace (x . entity) (elt *train-images* (+ start j))
+			  :start1 (* j 784))
+		 (let* ((label (elt *train-labels* (+ start j)))
+			(ind (ceiling (elt label 0))))
+		   (setf (aref train j ind) 1.0))
+		 ))
+	     ;; train
+	     (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
+		    (result (send mlp :train-batch x train *lr* *mr* mode))
+		    (loss-tmp (car result))
+		    (accuracy (cadr result)))
+	       (setq loss
+		     (+ (* ratio loss)
+			(* (- 1.0 ratio) loss-tmp)))
+	       (setq n (+ n (array-dimension x 0)))
+	       (format
+		t
+		"#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F      accuracy:  ~1,4F~%"
+		(* (1+ i) batchsize) loss n loss-tmp accuracy)
+	       )
+	     ))
+	 (format t "time:  ~S     loss ave.:  ~2,4F~%"
+		 (* (/ 1000.0 internal-time-units-per-second)
+		    (- (unix::runtime) tstart)) loss)
+	 (setq *mlp* mlp)
+	 (dump-mnist-instance (format nil "./model/mnist-mlp-~A.l" epoch))
+	 )
+       )
       )
     )
   )
