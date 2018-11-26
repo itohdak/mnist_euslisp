@@ -1,9 +1,12 @@
+*~
 *.gz
-*.txt
+/*.txt
+/log/
 *.so
 *.o
-*.c
+/*.c
 *.h
 mnist-datasets.l
-mnist-mlp-*.l
+model/mnist-mlp-*.l
 *.a
+!.gitignore
