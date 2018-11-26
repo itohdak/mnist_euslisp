@@ -5,3 +5,5 @@
 *.c
 *.h
 mnist-datasets.l
+mnist-mlp-*.l
+*.a

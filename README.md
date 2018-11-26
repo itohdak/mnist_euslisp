@@ -36,15 +36,18 @@ irteusgl$ (progn (load "mnist.so") (test) (dump-loadable-structure "mnist-datase
 irteusgl$ (compile-file "nn.l")
 ```
 
+## Utilize OpenBLAS (Optional)
+```
+$ sudo apt-get install libopenblas-base libopenblas-dev
+$ sudo update-alternatives --config libblas.so.3
+Select 3.
+```
+
 ## Run simulation
 ```
 $ roseus
 irteusgl$ (load "nn.so")
-irteusgl$ (test-mnist-batch)
+irteusgl$ (test-mnist-batch 200) ;; train with minibatch size 200
+irteusgl$ (test-mnist-test)      ;; test with train images
+irteusgl$ (test-mnist-test)      ;; test with test images
 ```
-
-```
-$ sudo apt-get install libopenblas-base libopenblas-dev
-$ sudo update-alternatives --config libblas.so.3
-```
-Select 3.

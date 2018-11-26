@@ -161,6 +161,6 @@ register pointer argv[];
 pointer ___matprod(register context *ctx, int n, register pointer *argv)
 {
   pointer mod=argv[0];
-  defun(ctx,"MPROD",mod,MATPROD,NULL);
-  defun(ctx,"MRELU",mod,MATRELU,NULL);
-  defun(ctx,"MSOFTMAX",mod,MATSOFTMAX,NULL);}
+  defun(ctx,"MPROD",mod,MATPROD);
+  defun(ctx,"MRELU",mod,MATRELU);
+  defun(ctx,"MSOFTMAX",mod,MATSOFTMAX);}
