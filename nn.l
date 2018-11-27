@@ -104,12 +104,41 @@
      (dolist (layer layers)
        (setq y (send layer :call y)))
      y))
+  (:test-loss-accuracy
+   (x train-data &optional (mode :cblas))
+   (let* ((y x) (z x)
+	  loss delta W
+	  (last-layer (car (last layers))))
+
+     ;; forwarding
+     (dolist (layer layers)
+       (setq y (send layer :call y mode)))
+
+     (let* ((loss-tmp 0.0)
+	    (accuracy-tmp 0))
+       (dotimes (i (array-dimension x 0))
+	 (let* ((answer (position-if #'(lambda (x) (= x 1.0))
+				     (matrix-row train-data i)))
+		(pred (position-if #'(lambda (x) (= x (reduce #'max (matrix-row y i))))
+				   (matrix-row y i))))
+	   (setq loss-tmp
+		 (+ loss-tmp
+		    (- (log (aref y i answer)))))
+	   (if (= answer pred)
+	       (incf accuracy-tmp))
+	   ))
+       (setq loss (/ loss-tmp (array-dimension x 0)))
+       (setq accuracy (/ (* 1.0 accuracy-tmp) (array-dimension x 0)))
+       )
+
+     (list loss accuracy)))
   (:train-batch
    (x train-data learning-rate momentum-rate &optional (mode :cblas))
    (let* ((y x) (z x)
 	  loss delta W
 	  (last-layer (car (last layers))))
-     ;; (setq y x)
+
+     ;; forwarding
      (dolist (layer layers)
        (setq y (send layer :call y mode)))
 
@@ -129,6 +158,7 @@
        (setq loss (/ loss-tmp (array-dimension x 0)))
        (setq accuracy (/ (* 1.0 accuracy-tmp) (array-dimension x 0)))
        )
+
      ;; back propagation
      (setq delta (copy-object y))
 
@@ -140,8 +170,6 @@
 
      (send last-layer :delta delta)
      (setq W (send last-layer :W))
-     ;; (setq ((elt layers (1- (length layers))) . delta) delta)
-     ;; (setq W ((elt layers (1- (length layers))) . W))
 
      (dolist (layer (cdr (reverse layers)))
        (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . out-dim))
@@ -166,7 +194,6 @@
 	 ))
 
      ;; update weight
-     ;; (setq z x)
      (dolist (layer layers)
        (let* ((dW (make-array (array-dimensions (layer . W)) :element-type :float))
 	      (db (make-array `(1 ,(length (layer . b))) :element-type :float)))
@@ -193,9 +220,6 @@
 	 ;; TODO: momentum
 	 (setq z (layer . z))
 	 ))
-
-     ;; (format t "W: ~A~%" (subseq (((elt layers 0) . W) . entity) 0 5))
-     ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
 
      (list loss accuracy)))
   (:print-weight
@@ -306,6 +330,114 @@
     )
   )
 
+(defun test-mnist-batch-test
+    (&optional (batchsize 50) (mode :cblas) (filename "/tmp/mnist-loss-accuracy.dat"))
+  (if (>= batchsize 50) (sys:alloc 100000000))
+  (unless (boundp '*train-images*)
+    (format t "Loading datasets ... mnist-datasets.l~%")
+    (require "mnist-datasets.l")
+    (format t "Loaded datasets ...~%")
+    )
+  (setq mlp
+	(instance MultiLayerPerceptron :init
+		  (list (instance Perceptron :init 784 1000 1.0 'mReLU)
+			(instance Perceptron :init 1000 1000 1.0 'mReLU)
+			(instance Perceptron :init 1000 10 1.0 'mSoftmax))))
+  (format t "learning rate:  ~A~%" *lr*)
+  (let* ((tstart))
+    (with-open-file
+     (f filename :direction :output :if-exists :new-version :if-does-not-exist :create)
+     (format f "# epoch train-loss train-accuracy test-loss test-accuracy~%")
+
+     (dotimes (epoch 20)
+       (format t "epoch:  ~2D  ===========================~%" (1+ epoch))
+       (format f "~a " (1+ epoch))
+       (setq tstart (unix::runtime))
+
+       ;; train
+       (let* ((loss 0.0)
+	      (n 0)
+	      (n-batch (/ (length *train-images*) batchsize))
+	      (accuracy-last 0.0)
+	      )
+	 (dotimes (i n-batch)
+	   (let* ((x (make-array `(,batchsize 784) :element-type :float))
+		  (train (make-array `(,batchsize 10) :element-type :float))
+		  )
+	     ;; create batch
+	     (let* ((start (* i batchsize)))
+	       (dotimes (j batchsize)
+		 (replace (x . entity) (elt *train-images* (+ start j))
+			  :start1 (* j 784))
+		 (let* ((label (elt *train-labels* (+ start j)))
+			(ind (ceiling (elt label 0))))
+		   (setf (aref train j ind) 1.0))
+		 ))
+	     ;; train
+	     (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
+		    (result (send mlp :train-batch x train *lr* *mr* mode))
+		    (loss-tmp (car result))
+		    (accuracy (cadr result)))
+	       (setq loss
+		     (+ (* ratio loss)
+			(* (- 1.0 ratio) loss-tmp)))
+	       (setq n (+ n (array-dimension x 0)))
+	       (setq accuracy-last
+		     (+ (* ratio accuracy-last)
+			(* (- 1.0 ratio) accuracy)))
+	       )
+	     ))
+	 (format t "loss ave.:  ~2,4F      accuracy:  ~1,4F            "
+		 loss accuracy-last)
+	 (format f "~a ~a " loss accuracy-last)
+	 ;; (setq *mlp* mlp)
+	 ;; (dump-mnist-instance (format nil "./model/mnist-mlp-~A.l" epoch))
+	 )
+
+       ;; test
+       (let* ((loss 0.0)
+	      (n 0)
+	      (n-batch (/ (length *test-images*) batchsize))
+	      (accuracy-last 0.0)
+	      )
+	 (dotimes (i n-batch)
+	   (let* ((x (make-array `(,batchsize 784) :element-type :float))
+		  (test (make-array `(,batchsize 10) :element-type :float))
+		  )
+	     ;; create batch
+	     (let* ((start (* i batchsize)))
+	       (dotimes (j batchsize)
+		 (replace (x . entity) (elt *test-images* (+ start j))
+			  :start1 (* j 784))
+		 (let* ((label (elt *test-labels* (+ start j)))
+			(ind (ceiling (elt label 0))))
+		   (setf (aref test j ind) 1.0))
+		 ))
+	     ;; test
+	     (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
+		    (result (send mlp :test-loss-accuracy x test mode))
+		    (loss-tmp (car result))
+		    (accuracy (cadr result)))
+	       (setq loss
+		     (+ (* ratio loss)
+			(* (- 1.0 ratio) loss-tmp)))
+	       (setq n (+ n (array-dimension x 0)))
+	       (setq accuracy-last
+		     (+ (* ratio accuracy-last)
+			(* (- 1.0 ratio) accuracy)))
+	       )
+	     ))
+	 (format t "loss ave.:  ~2,4F      accuracy:  ~1,4F~%"
+		 loss accuracy-last)
+	 (format f "~a ~a~%" loss accuracy-last)
+	 )
+       )
+     )
+    )
+  (unix::system "gnuplot plot-mnist-loss-accuracy.plt")
+  )
+
 (format t ";;(test-mnist-batch 200) ;; train from train-images~%")
 (format t ";;(test-mnist-test) ;; test test-images~%")
 (format t ";;(test-mnist-train) ;; test train-images~%")
+(format t ";;(test-mnist-batch-test 200) ;; train and test sequentially~%")
