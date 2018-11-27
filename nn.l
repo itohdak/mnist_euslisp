@@ -109,10 +109,16 @@
    (let* ((y x) (z x)
 	  loss delta W
 	  (last-layer (car (last layers))))
-     ;; (setq y x)
+
+     ;; forwarding
+     (format t "forwarding~%")
+     (bench
      (dolist (layer layers)
        (setq y (send layer :call y mode)))
+     )
 
+     (format t "loss computation~%")
+     (bench
      (let* ((loss-tmp 0.0)
 	    (accuracy-tmp 0))
        (dotimes (i (array-dimension x 0))
@@ -129,7 +135,11 @@
        (setq loss (/ loss-tmp (array-dimension x 0)))
        (setq accuracy (/ (* 1.0 accuracy-tmp) (array-dimension x 0)))
        )
+     )
+
      ;; back propagation
+     (format t "back propagation~%")
+     (bench
      (setq delta (copy-object y))
 
      (cond
@@ -140,8 +150,6 @@
 
      (send last-layer :delta delta)
      (setq W (send last-layer :W))
-     ;; (setq ((elt layers (1- (length layers))) . delta) delta)
-     ;; (setq W ((elt layers (1- (length layers))) . W))
 
      (dolist (layer (cdr (reverse layers)))
        (let* ((new-delta (make-array `(,(array-dimension delta 0) ,(layer . out-dim))
@@ -155,7 +163,7 @@
 	   (cuda-cublas-m* delta W new-delta)))
 
 	 (setq (new-delta . entity)
-	       ((mprod new-delta 
+	       ((mprod new-delta
 		       (funcall (symbol-function (layer . activation))
 				1 (layer . u))) . entity)
 	       ) ;; 要素積
@@ -164,9 +172,11 @@
 	 (setq (layer . delta) delta)
 	 (setq W (layer . W))
 	 ))
+     )
 
      ;; update weight
-     ;; (setq z x)
+     (format t "weight update~%")
+     (bench
      (dolist (layer layers)
        (let* ((dW (make-array (array-dimensions (layer . W)) :element-type :float))
 	      (db (make-array `(1 ,(length (layer . b))) :element-type :float)))
@@ -193,10 +203,9 @@
 	 ;; TODO: momentum
 	 (setq z (layer . z))
 	 ))
+     )
 
-     ;; (format t "W: ~A~%" (subseq (((elt layers 0) . W) . entity) 0 5))
-     ;; (format t "b: ~A~%" (subseq ((elt layers 0) . b) 0 5))
-
+     (format t "~%")
      (list loss accuracy)))
   (:print-weight
    ()
@@ -262,46 +271,44 @@
     (dotimes (epoch 20)
       (format t "epoch:  ~2D  ===========================~%" (1+ epoch))
       (setq tstart (unix::runtime))
-      (bench
-       (let* ((loss 0.0)
-	      (n 0)
-	      (n-batch (/ (length *train-images*) batchsize))
+      (let* ((loss 0.0)
+	     (n 0)
+	     (n-batch (/ (length *train-images*) batchsize))
+	     )
+	(dotimes (i n-batch)
+	  (let* ((x (make-array `(,batchsize 784) :element-type :float))
+		 (train (make-array `(,batchsize 10) :element-type :float))
+		 )
+	    ;; create batch
+	    (let* ((start (* i batchsize)))
+	      (dotimes (j batchsize)
+		(replace (x . entity) (elt *train-images* (+ start j))
+			 :start1 (* j 784))
+		(let* ((label (elt *train-labels* (+ start j)))
+		       (ind (ceiling (elt label 0))))
+		  (setf (aref train j ind) 1.0))
+		))
+	    ;; train
+	    (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
+		   (result (send mlp :train-batch x train *lr* *mr* mode))
+		   (loss-tmp (car result))
+		   (accuracy (cadr result)))
+	      (setq loss
+		    (+ (* ratio loss)
+		       (* (- 1.0 ratio) loss-tmp)))
+	      (setq n (+ n (array-dimension x 0)))
+	      (format
+	       t
+	       "#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F      accuracy:  ~1,4F~%"
+	       (* (1+ i) batchsize) loss n loss-tmp accuracy)
 	      )
-	 (dotimes (i n-batch)
-	   (let* ((x (make-array `(,batchsize 784) :element-type :float))
-		  (train (make-array `(,batchsize 10) :element-type :float))
-		  )
-	     ;; create batch
-	     (let* ((start (* i batchsize)))
-	       (dotimes (j batchsize)
-		 (replace (x . entity) (elt *train-images* (+ start j))
-			  :start1 (* j 784))
-		 (let* ((label (elt *train-labels* (+ start j)))
-			(ind (ceiling (elt label 0))))
-		   (setf (aref train j ind) 1.0))
-		 ))
-	     ;; train
-	     (let* ((ratio (/ (* 1.0 n) (+ n (array-dimension x 0))))
-		    (result (send mlp :train-batch x train *lr* *mr* mode))
-		    (loss-tmp (car result))
-		    (accuracy (cadr result)))
-	       (setq loss
-		     (+ (* ratio loss)
-			(* (- 1.0 ratio) loss-tmp)))
-	       (setq n (+ n (array-dimension x 0)))
-	       (format
-		t
-		"#image:  ~5D      loss ave.:  ~2,4F (n:  ~5D)      loss:  ~2,4F      accuracy:  ~1,4F~%"
-		(* (1+ i) batchsize) loss n loss-tmp accuracy)
-	       )
-	     ))
-	 (format t "time:  ~S     loss ave.:  ~2,4F~%"
-		 (* (/ 1000.0 internal-time-units-per-second)
-		    (- (unix::runtime) tstart)) loss)
-	 (setq *mlp* mlp)
-	 (dump-mnist-instance (format nil "./model/mnist-mlp-~A.l" epoch))
-	 )
-       )
+	    ))
+	(format t "time:  ~S     loss ave.:  ~2,4F~%"
+		(* (/ 1000.0 internal-time-units-per-second)
+		   (- (unix::runtime) tstart)) loss)
+	(setq *mlp* mlp)
+	(dump-mnist-instance (format nil "./model/mnist-mlp-~A.l" epoch))
+	)
       )
     )
   )
