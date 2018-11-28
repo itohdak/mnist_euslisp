@@ -65,6 +65,9 @@ irteusgl$ (load "nn.so")
 irteusgl$ (test-mnist-batch 200 :cblas)  ;; train with minibatch size 200, CBLAS/OpenBLAS
 irteusgl$ (test-mnist-batch 200 :cublas) ;; train with minibatch size 200, cuBLAS
 
+irteusgl$ (test-mnist-batch-test 200 :cblas)  ;; train and test sequentially with CBLAS/OpenBLAS
+irteusgl$ (test-mnist-batch-test 200 :cublas) ;; train and test sequentially with cuBLAS
+
 irteusgl$ (test-mnist-test) ;; test with train images
 irteusgl$ (test-mnist-test) ;; test with test images
 ```
