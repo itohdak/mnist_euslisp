@@ -71,3 +71,10 @@ irteusgl$ (test-mnist-batch-test 200 :cublas) ;; train and test sequentially wit
 irteusgl$ (test-mnist-test) ;; test with train images
 irteusgl$ (test-mnist-test) ;; test with test images
 ```
+
+## Results
+- Result of `(test-mnist-batch-test 200 :cblas 1.0)`
+![misc/train_test_batchsize_200_learning_rate_0.001_dropout_1.0.png](misc/train_test_batchsize_200_learning_rate_0.001_dropout_1.0.png)
+
+- Result of `(test-mnist-batch-test 200 :cblas 0.8)`
+![misc/train_test_batchsize_200_learning_rate_0.001_dropout_0.8.png](misc/train_test_batchsize_200_learning_rate_0.001_dropout_0.8.png)
