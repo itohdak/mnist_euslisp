@@ -48,10 +48,13 @@
 		       :element-type :float
 		       :initial-element 0.0))
    (setq delta nil)
-   ;;(setq activation (instance act :init))
    (setq activation act)
-   ;; (setq p p-dropout)
-   ;; (setq mask (make-matrix out-dim))
+   (setq p p-dropout)
+   (setq mask (make-array out-dim
+			  :element-type :float
+			  :initial-element 0.0))
+   (dotimes (i (length mask))
+     (setf (elt mask i) (ceiling (- p (random 1.0)))))
    (setq pre-dW nil)
    (setq pre-db nil)
    (setq dW nil)
@@ -73,13 +76,16 @@
      (setq u (cuda-dgemm x Wt (extended-matrix b (array-dimension x 0)))))
     ((eq mode :cublas)
      (setq u (cuda-cublas-m* x Wt (extended-matrix b (array-dimension x 0))))))
-   ;;(setq z (send activation :call u))
    (setq z (funcall (symbol-function activation) 0 u)))
   (:dimensions () `(,out-dim ,in-dim))
   (:b () b)
   (:W () W)
   (:Wt () Wt)
   (:delta (new-delta) (setq delta new-delta))
+  (:reset-mask
+   ()
+   (dotimes (i (length mask))
+     (setf (elt mask i) (ceiling (- p (random 1.0))))))
   )
 
 (defclass MultiLayerPerceptron
@@ -102,7 +108,8 @@
    (x)
    (let* ((y (extended-matrix x 1)))
      (dolist (layer layers)
-       (setq y (send layer :call y)))
+       (setq y (send layer :call y mode))
+       (setq (y . entity) (scale (layer . p) (y . entity))))
      y))
   (:test-loss-accuracy
    (x train-data &optional (mode :cblas))
@@ -112,7 +119,8 @@
 
      ;; forwarding
      (dolist (layer layers)
-       (setq y (send layer :call y mode)))
+       (setq y (send layer :call y mode))
+       (setq (y . entity) (scale (layer . p) (y . entity))))
 
      (let* ((loss-tmp 0.0)
 	    (accuracy-tmp 0))
@@ -140,7 +148,13 @@
 
      ;; forwarding
      (dolist (layer layers)
-       (setq y (send layer :call y mode)))
+       (send layer :reset-mask)
+       (setq y (send layer :call y mode))
+       (setq (y . entity)
+	     ((mprod y
+		     (extended-matrix (layer . mask)
+				      (array-dimension y 0))) . entity))
+       )
 
      (let* ((loss-tmp 0.0)
 	    (accuracy-tmp 0))
@@ -148,7 +162,7 @@
 	 (let* ((answer (position-if #'(lambda (x) (= x 1.0))
 				     (matrix-row train-data i)))
 		(pred (position-if #'(lambda (x) (= x (reduce #'max (matrix-row y i))))
-				     (matrix-row y i))))
+				   (matrix-row y i))))
 	   (setq loss-tmp
 		 (+ loss-tmp
 		    (- (log (aref y i answer)))))
@@ -183,12 +197,14 @@
 	   (cuda-cublas-m* delta W new-delta)))
 
 	 (setq (new-delta . entity)
-	       ((mprod new-delta 
+	       ((mprod new-delta
 		       (funcall (symbol-function (layer . activation))
-				1 (layer . u))) . entity)
-	       ) ;; 要素積
+				1 (layer . u))) . entity)) ;; 要素積
+	 (setq (new-delta . entity)
+	       ((mprod new-delta
+		       (extended-matrix (layer . mask)
+					(array-dimension new-delta 0))) . entity))
 	 (setq delta new-delta)
-	 ;; TODO: dropout
 	 (setq (layer . delta) delta)
 	 (setq W (layer . W))
 	 ))
@@ -207,12 +223,12 @@
 	  ((eq mode :cuda)
 	   (cuda-dgemm (transpose (layer . delta)) z dW)
 	   (cuda-dgemm (one-matrix `(1 ,(array-dimension z 0)))
-			(layer . delta) db)
+		       (layer . delta) db)
 	   (cblas-daxpy (dW . entity) ((layer . W) . entity) :alpha (- learning-rate)))
 	  ((eq mode :cublas)
 	   (cuda-cublas-m* (transpose (layer . delta)) z dW)
 	   (cuda-cublas-m* (one-matrix `(1 ,(array-dimension z 0)))
-			(layer . delta) db)
+			   (layer . delta) db)
 	   (cuda-cublas-v+ (dW . entity) ((layer . W) . entity) :alpha (- learning-rate))))
 
 	 (setq (layer . Wt) (transpose (layer . W)))
@@ -269,7 +285,7 @@
      (if (>= i (length *test-images*)) (throw :exit-test nil))))
   )
 
-(defun test-mnist-batch (&optional (batchsize 50) (mode :cblas))
+(defun test-mnist-batch (&optional (batchsize 50) (mode :cblas) (p-dropout 1.0))
   (if (>= batchsize 50) (sys:alloc 100000000))
   (unless (boundp '*train-images*)
     (format t "Loading datasets ... mnist-datasets.l~%")
@@ -278,8 +294,8 @@
     )
   (setq mlp
 	(instance MultiLayerPerceptron :init
-		  (list (instance Perceptron :init 784 1000 1.0 'mReLU)
-			(instance Perceptron :init 1000 1000 1.0 'mReLU)
+		  (list (instance Perceptron :init 784 1000 p-dropout 'mReLU)
+			(instance Perceptron :init 1000 1000 p-dropout 'mReLU)
 			(instance Perceptron :init 1000 10 1.0 'mSoftmax))))
   (format t "learning rate:  ~A~%" *lr*)
   (let* ((tstart))
@@ -331,7 +347,7 @@
   )
 
 (defun test-mnist-batch-test
-    (&optional (batchsize 50) (mode :cblas) (filename "/tmp/mnist-loss-accuracy.dat"))
+    (&optional (batchsize 50) (mode :cblas) (p-dropout 1.0) (filename "/tmp/mnist-loss-accuracy.dat"))
   (if (>= batchsize 50) (sys:alloc 100000000))
   (unless (boundp '*train-images*)
     (format t "Loading datasets ... mnist-datasets.l~%")
@@ -340,8 +356,8 @@
     )
   (setq mlp
 	(instance MultiLayerPerceptron :init
-		  (list (instance Perceptron :init 784 1000 1.0 'mReLU)
-			(instance Perceptron :init 1000 1000 1.0 'mReLU)
+		  (list (instance Perceptron :init 784 1000 p-dropout 'mReLU)
+			(instance Perceptron :init 1000 1000 p-dropout 'mReLU)
 			(instance Perceptron :init 1000 10 1.0 'mSoftmax))))
   (format t "learning rate:  ~A~%" *lr*)
   (let* ((tstart))
@@ -435,7 +451,14 @@
      )
     )
   (unix::system "gnuplot plot-mnist-loss-accuracy.plt")
-  )
+  t)
+
+(defun print-conditions (lr mr batchsize p-dropout)
+  (format t "learning rate         :  ~1,4F~%" lr)
+  (format t "momentum rate         :  ~1,4F~%" mr)
+  (format t "batch size            :  ~A~%" batchsize)
+  (format t "dropout election prob.:  ~1,2F~%" p-dropout)
+  t)
 
 (format t ";;(test-mnist-batch 200) ;; train from train-images~%")
 (format t ";;(test-mnist-test) ;; test test-images~%")
